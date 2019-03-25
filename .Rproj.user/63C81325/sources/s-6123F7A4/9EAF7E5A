@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1553513794192.000,
+    "dirty" : false,
+    "encoding" : "ASCII",
+    "folds" : "",
+    "hash" : "3292606749",
+    "id" : "9EAF7E5A",
+    "lastKnownWriteTime" : 1553516035,
+    "last_content_update" : 1553516035283,
+    "path" : "D:/Data/src/modelpod/R/model_pod.R",
+    "project_path" : "R/model_pod.R",
+    "properties" : {
+        "cursorPosition" : "12,51",
+        "scrollLine" : "0"
+    },
+    "relative_order" : 2,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

@@ -1,0 +1,18 @@
+Package: modelpod
+Type: Package
+Title: Point of departure estimation with natural splines
+Version: 0.1.0
+Description: Simple point of departure estimation. Fits a 3 d.f. natural spline lm(y ~ splines::ns(x, df = 3))
+    and uses user defined response value plus the upper 95% confidence limit of the regression fit
+    to estimate the point of departure. A '../results' folder is returned containing
+    a pdf with the fitted curves and a tab delimited text file with the estimates.
+    
+License: What license is it under?
+Encoding: UTF-8
+LazyData: true
+Imports:
+    splines (>= 3.5.1)
+Authors@R: person("Steven", "Wink", email = "hardervidertsie@gmail.com",
+  role = c("aut", "cre"))
+    
+    
