@@ -6,13 +6,16 @@ Description: Simple point of departure estimation. Fits a 3 d.f. natural spline 
     and uses user defined response value plus the upper 95% confidence limit of the regression fit
     to estimate the point of departure. A '../results' folder is returned containing
     a pdf with the fitted curves and a tab delimited text file with the estimates.
-    
+    Please note that piece wise splines are not well suited for all curve types such as log logistic type of data.  
 License: What license is it under?
 Encoding: UTF-8
 LazyData: true
-Imports:
-    splines (>= 3.5.1)
+Imports: splines (>= 3.5.1)
 Authors@R: person("Steven", "Wink", email = "hardervidertsie@gmail.com",
   role = c("aut", "cre"))
-    
-    
+RoxygenNote: 6.1.1
+Suggests: 
+    knitr,
+    rmarkdown,
+    testthat
+VignetteBuilder: knitr
