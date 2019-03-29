@@ -2,29 +2,37 @@
 % Please edit documentation in R/model_pod.R
 \name{model_pod}
 \alias{model_pod}
-\title{fit piece wise splines}
+\title{fit loess regression}
 \usage{
-model_pod(xcol, ycol, dataset, respLev, groups)
+model_pod(xcol, ycol, dataset, respLev, groups, minD, ...)
 }
 \arguments{
-\item{xcol}{string, column name of dependant variable.}
+\item{xcol}{string, column name of independant variable (usually the concentration).}
 
-\item{ycol}{string, column name of independent variable/ measure variable.}
+\item{ycol}{string, column name of dependent variable/ measure/ response variable.}
 
 \item{dataset}{dataframe containing the x, y and groups columns.}
 
-\item{respLev}{Numeric, A number representing threshold for point of departure.}
+\item{respLev}{Numeric, A number representing threshold for point of departure,
+strictly speaking this should be set to 0 for point of departures.}
 
-\item{groups}{string, column name of grouping variable.}
+\item{groups}{string, column name of grouping variable which entries uniquely identify
+the replicate set of concentration response curves for a certain condition.}
+
+\item{minD}{integer, minimum number of unique concentrations
+per concentration response curve, curves with less are removed}
 }
 \value{
 dataframe with the point of departure estimates
 }
 \description{
-fit piece wise splines
+dfdsf
 }
 \examples{
 model_pod(xcol = "GFP_int", ycol = "dose_uM", dataset = test_data,
-      respL = 0.1,  groups = "treatment")
+      respL = 0.1,  groups = "treatment", minD = 7, span = 3/4, degree = 1)
 
+}
+\author{
+Steven Wink
 }
