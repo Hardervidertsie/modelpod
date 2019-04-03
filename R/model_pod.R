@@ -29,12 +29,61 @@
 
 
 
+
+
+# S3 class constructor for pod
+new_pod <- function(x = data.frame(), type = "poddata") {
+  stopifnot(is.data.frame(x))
+  type = match.arg(type, c("poddata", "podtime"))
+
+  structure(x,
+            class = append(class(x), type)
+            )
+}
+
+# pod validator function
+validate_pod <- function(x) {
+  if(inherits(x, "pod")){
+    stop("Not class pod, please call parse_data() first ")
+  }
+
+  if(nrow(x) < 1){
+    stop("No rows in data")
+  }
+
+    x
+}
+
 ## TODO: maak een method voor het prepareren van time-lapse data voor de fm1 functie, en een
 ## method voor het prepareren van single time point data voor de fm1 functie
 
 
+# parse_data: set class based on time lapse or no-time lapse
 
-parse_data <- function(xcol = "dose_uM", groups = "treatment", minD = 7, dataset = summary_data) {
+parse_data <- function(dataset = summary_data) {
+
+  message("A summary data file:\n
+          replID entries are biological replicates and plateID entries are unique
+          for each individual plate.
+          So for a dataset with 3 biological replicates each plateID should pair with 3 replID entries
+          missing replicates are ok, for example:
+
+          plateID:  replID:\n
+          plate1    rep1
+          plate2    rep2
+          plate3    rep3
+          plate4    rep1
+          plate5    rep2
+          plate6    rep1
+          plate7    rep2
+          plate8    rep3")
+  # check if input is a summary data file with minimal set of required columns
+  min_columnset <- c("treatment", "replID", "plateID", "dose_uM", "cell_line")
+  ind_ok <- min_columnset %in% colnames(dataset)
+
+  if(!all(ind_ok)){
+    stop(message(paste("missing columns: ", min_columnset[!ind_ok], collapse = "\n")))
+  }
 
   # check if variable in column names, if so, make tidy
   if("variable" %in% colnames(dataset)){
@@ -43,37 +92,64 @@ parse_data <- function(xcol = "dose_uM", groups = "treatment", minD = 7, dataset
   }
 
   if(any(c("timeID", "timeAfterExposure") %in% colnames(dataset)) &
-     (length(unique(dataset$time)) > 1 | length(unique(dataset$timeAfterExposure))) > 1) {
+     (length(unique(dataset$time)) > 1 | length(unique(dataset$timeAfterExposure)) > 1)) {
 
-    class(dataset_list) <- append(class(dataset), "prepped_time")
-    message("Found multiple time points, assigning class prepped_time")
+    dataset <- new_pod(dataset, type = "podtime")
+    message("Found multiple time points, assigning class podtime")
 
     } else {
-
-    class(dataset_list) <- append(class(dataset), "prepped_data")
-    message("No multiple time points detected, assigning class prepped_data")
+      dataset <- new_pod(dataset, type = "poddata")
+    message("No multiple time points detected, assigning class poddata")
   }
-
+return(dataset)
 }
 
+summary_data <- parse_data(dataset = summary_data)
+class(summary_data)
 
 #' @title generic for summarising data
 #'
-#' @description prepares \code{prepped_data} and \code{prepped_time} for model fitting.
+#' @description prepares \code{poddata} and \code{podtime} for model fitting.
 #'    time summarisation methods are \code{max}, \code{auc} or \code{sel_time}
 #'
 #' @author Steven Wink
 
-summarise_data <- function(input) {
-  UseMethod("summarise_data", input)
+summarise_data <- function(input, method = "auc") {
+
+   UseMethod("summarise_data", input)
+
+  }
+
+
+
+summarise_data.poddata <- function(dataset = summary_data, groups = NULL, xcol = NULL, method = NULL ) {
+
+  # this should result in a list with n replicate curves per list entry
+  if(is.null(groups)){
+    stop("groups argument not defined")
+  }
+  if(is.null(xcol)){
+    stop("xcol argument not defined")
+  }
+
+test_fun <- function(dataset, groups , xcol ) {
+  groups <- enquo(groups)
+  xcol <- enquo(xcol)
+   dataset %>%
+    dplyr::group_by(!! groups, replID, !! xcol) %>%
+    dplyr::mutate(all_rep = n()) %>% #of technical? replicates
+    ungroup() %>%
+    dplyr::group_by(!! groups, !! xcol) %>%
+    dplyr::mutate(bio_rep =  n_distinct(replID)) %>%
+     mutate(tech_rep = all_rep > bio_rep)
 }
+# if technical reps: send message, then calculate summary over groups + reps + xcol
+test <- test_fun(dataset = summary_data, groups = treatment, xcol = dose_uM )
 
+unique(test$bio_rep)
 
+name = deparse(substitute(plyr))
 
-summarise_data.prepped_data <- function(input) {
-  dataset <- as.data.frame(
-    dataset %>% dplyr::group_by_(groups, xcol) %>% dplyr::mutate(n=n()) # of replicates
-  )
   dataset<-dataset[order(dataset[, groups], dataset[, xcol]),]
 
   dataset_list <- split(dataset, f = dataset[, groups]) # assuming 1 variable, 1 cell line, 1 time point
@@ -84,7 +160,17 @@ summarise_data.prepped_data <- function(input) {
 }
 
 
-summarise_data.prepped_time <- function(input, method) {
+summarise_data.podtime <- function(dataset, groups = NULL, xcol = NULL, method = NULL ) {
+
+  if(is.null(method)) {
+  stop("provide method argument, either \"auc\", \"mean\" or \"max\"")
+  }
+  if(is.null(groups)){
+    stop("groups argument not defined")
+  }
+  if(is.null(xcol)){
+    stop("xcol argument not defined")
+  }
 
   dataset <- as.data.frame(
     dataset %>% dplyr::group_by_(groups, xcol) %>% dplyr::mutate(n=n()) # of replicates
@@ -97,6 +183,9 @@ summarise_data.prepped_time <- function(input, method) {
   dataset_list <- dataset_list[-ind_rm]
 
 }
+
+test <- summarise_data(summary_data, method = "auc" )
+
 
 
 #' @title fit loess regression
