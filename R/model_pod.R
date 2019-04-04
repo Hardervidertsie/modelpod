@@ -11,9 +11,9 @@
 #'
 #' @param xcol string, column name of independant variable (usually the concentration).
 #'     Default: "dose_uM"
-#' @param dataset dataframe containing the x, y and groups columns.
+#' @param dataset dataframe containing the x, y and Groups columns.
 #'     Default: summary_data
-#' @param groups string, column name of grouping variable which entries uniquely identify
+#' @param Groups string, column name of grouping variable which entries uniquely identify
 #'     Default: "treatment"
 #' the replicate set of concentration response curves for a certain condition.
 #' @param minD integer, minimum number of unique concentrations
@@ -22,7 +22,7 @@
 
 #' @examples
 
-#' parse_data(xcol = "dose_uM", groups = "treatment",
+#' parse_data(xcol = "dose_uM", Groups = "treatment",
 #'          minD = 7, dataset = test_data)
 #'
 #' @export
@@ -54,13 +54,10 @@ validate_pod <- function(x) {
     x
 }
 
-## TODO: maak een method voor het prepareren van time-lapse data voor de fm1 functie, en een
-## method voor het prepareren van single time point data voor de fm1 functie
-
 
 # parse_data: set class based on time lapse or no-time lapse
 
-parse_data <- function(dataset = summary_data) {
+parse_data <- function(dataset ) {
 
   message("A summary data file:\n
           replID entries are biological replicates and plateID entries are unique
@@ -81,17 +78,17 @@ parse_data <- function(dataset = summary_data) {
   min_columnset <- c("treatment", "replID", "plateID", "dose_uM", "cell_line")
   ind_ok <- min_columnset %in% colnames(dataset)
 
-  if(!all(ind_ok)){
+  if (!all(ind_ok)){
     stop(message(paste("missing columns: ", min_columnset[!ind_ok], collapse = "\n")))
   }
 
   # check if variable in column names, if so, make tidy
-  if("variable" %in% colnames(dataset)){
+  if ("variable" %in% colnames(dataset)){
     dataset <- dataset %>% tidyr::spread_(key = "variable", value = "value")
     message("Colum variable, tidy formatted table")
   }
 
-  if(any(c("timeID", "timeAfterExposure") %in% colnames(dataset)) &
+  if (any(c("timeID", "timeAfterExposure") %in% colnames(dataset)) &
      (length(unique(dataset$time)) > 1 | length(unique(dataset$timeAfterExposure)) > 1)) {
 
     dataset <- new_pod(dataset, type = "podtime")
@@ -104,8 +101,10 @@ parse_data <- function(dataset = summary_data) {
 return(dataset)
 }
 
+#load("data/test_data.rda")
 summary_data <- parse_data(dataset = summary_data)
-class(summary_data)
+
+head(summary_data)
 
 #' @title generic for summarising data
 #'
@@ -114,77 +113,133 @@ class(summary_data)
 #'
 #' @author Steven Wink
 
-summarise_data <- function(input, method = "auc") {
+summarise_data <- function(dataset, ... ) {
 
-   UseMethod("summarise_data", input)
+   UseMethod("summarise_data")
 
   }
 
 
+summarise_data.poddata <- function(dataset, Groups, xcol , method ) {
 
-summarise_data.poddata <- function(dataset = summary_data, groups = NULL, xcol = NULL, method = NULL ) {
-
-  # this should result in a list with n replicate curves per list entry
-  if(is.null(groups)){
-    stop("groups argument not defined")
-  }
-  if(is.null(xcol)){
-    stop("xcol argument not defined")
-  }
-
-test_fun <- function(dataset, groups , xcol ) {
-  groups <- enquo(groups)
+  Groups <- enquo(Groups)
   xcol <- enquo(xcol)
-   dataset %>%
-    dplyr::group_by(!! groups, replID, !! xcol) %>%
+
+calc_tech_rep <- function(dataset, Groups, xcol ) {
+
+
+   tmp <- dataset %>%
+    dplyr::group_by(!! Groups, replID, !! xcol) %>%
     dplyr::mutate(all_rep = n()) %>% #of technical? replicates
     ungroup() %>%
-    dplyr::group_by(!! groups, !! xcol) %>%
+    dplyr::group_by(!! Groups, !! xcol) %>%
     dplyr::mutate(bio_rep =  n_distinct(replID)) %>%
-     mutate(tech_rep = all_rep > bio_rep)
-}
-# if technical reps: send message, then calculate summary over groups + reps + xcol
-test <- test_fun(dataset = summary_data, groups = treatment, xcol = dose_uM )
-
-unique(test$bio_rep)
-
-name = deparse(substitute(plyr))
-
-  dataset<-dataset[order(dataset[, groups], dataset[, xcol]),]
-
-  dataset_list <- split(dataset, f = dataset[, groups]) # assuming 1 variable, 1 cell line, 1 time point
-  ind_rm <- which(sapply(dataset_list, function(x) length(unique(x[, xcol]))) < (minD+1))
-  dataset_list <- dataset_list[-ind_rm]
-
-
+    mutate(tech_rep = all_rep > bio_rep)
+if (any(tmp$tech_rep)){
+    return(TRUE)
+ } else {
+    return(FALSE)
+ }
 }
 
+tech_rep <- calc_tech_rep(dataset, Groups, xcol)
+tech_rep
 
-summarise_data.podtime <- function(dataset, groups = NULL, xcol = NULL, method = NULL ) {
 
-  if(is.null(method)) {
-  stop("provide method argument, either \"auc\", \"mean\" or \"max\"")
+# if technical reps: send message, then calculate summary over Groups + reps + xcol
+
+if (tech_rep) {
+
+min_columnset <- c("treatment", "replID", "plateID", "dose_uM", "cell_line")
+
+message( "Technical replicates detected, calculating mean over: \n")
+
+message( paste(c(
+                 min_columnset,
+                 paste(quo_name(Groups), "(Groups)")
+                 ),
+                 collapse = "\n"
+                 )
+              )
+
+  calc_summary <- function(dataset, min_columnset, Groups) {
+
+  groups_var <- rlang::syms(min_columnset)
+
+  dataset %>% dplyr::group_by(!!! groups_var, !! Groups) %>%
+  dplyr::summarise_all(.funs = mean)
   }
-  if(is.null(groups)){
-    stop("groups argument not defined")
-  }
-  if(is.null(xcol)){
-    stop("xcol argument not defined")
-  }
 
-  dataset <- as.data.frame(
-    dataset %>% dplyr::group_by_(groups, xcol) %>% dplyr::mutate(n=n()) # of replicates
-  )
-  dataset<-dataset[order(dataset[, groups], dataset[, xcol]),]
+  dataset <- calc_summary(dataset, min_columnset, Groups )
 
+ }
 
-  dataset_list <- split(dataset, f = dataset[, groups]) # assuming 1 variable, 1 cell line, 1 time point
-  ind_rm <- which(sapply(dataset_list, function(x) length(unique(x[, xcol]))) < (minD+1))
-  dataset_list <- dataset_list[-ind_rm]
+class(dataset) <- append(class(dataset), "pod")
+attributes(dataset)$sum_vars <- sum_vars
+attributes(dataset)$all_vars_set <- all_vars_set
+attributes(dataset)$Groups <- quo_text(Groups)
+
+ return(dataset)
 
 }
 
-test <- summarise_data(summary_data, method = "auc" )
+summarise_data.podtime <- function(dataset, Groups, xcol, method  ) {
+
+  Groups <- rlang::enquo(Groups)
+  xcol <- rlang::enquo(xcol)
+  method = rlang::enquo(method)
+
+  method <- match.arg(rlang::quo_text(method), choices = c("auc", "max", "mean"))
+
+  #  calculate summary over time:
+
+  min_columnset <- c("treatment", "replID", "plateID", "dose_uM", "cell_line")
+  all_vars <- colnames(dataset)[!colnames(dataset) %in% c("timeID", "timeAfterExposure")]
+  all_vars_set <- intersect(all_vars, min_columnset)
+
+  sum_vars <- all_vars[ !all_vars %in% all_vars_set]
+
+
+  message("summarising time lapse data per:\n")
+  message(paste( all_vars_set, collapse = "\n"))
+  message("   ========   ")
+  message("calculating summary over:\n")
+  message(paste(sum_vars, collapse = "\n"))
+
+
+  calc_summary_t <- function(dataset, all_vars_set, method) {
+    all_vars_set <- rlang::syms(all_vars_set)
+    dataset %>% dplyr::group_by(!!! all_vars_set) %>%
+        dplyr::summarise_at(vars(sum_vars), .funs = method)
+    }
+
+
+  auc_fun <- function() {
+    timecol <-  dplyr::if_else("timeID" %in% colnames(dataset),  "timeID", "timeAfterExposure")
+    dataset %>% dplyr::group_by(!!! rlang::syms(all_vars_set)) %>%
+      dplyr::summarise_at(vars(sum_vars),
+                          funs(MESS::auc(x = !! rlang::sym(timecol), y = .  , type = "spline")))
+  }
+
+if (method == "auc"){
+  dataset <- auc_fun()
+  } else {
+  dataset <- calc_summary_t(dataset, all_vars_set, method)
+  }
+
+
+  class(dataset) <- append(class(dataset), "pod")
+  attributes(dataset)$sum_vars <- sum_vars
+  attributes(dataset)$all_vars_set <- all_vars_set
+  attributes(dataset)$Groups <- quo_text(Groups)
+
+  return(dataset)
+
+}
+
+summarized_data <- summarise_data(dataset = summary_data, Groups = treatment,  xcol = dose_uM, method = auc  )
+
+attributes(summarized_data)
 
 
 
@@ -196,10 +251,10 @@ test <- summarise_data(summary_data, method = "auc" )
 #'
 #' @param xcol string, column name of independant variable (usually the concentration).
 #' @param ycol string, column name of dependent variable/ measure/ response variable.
-#' @param dataset dataframe containing the x, y and groups columns.
+#' @param dataset dataframe containing the x, y and Groups columns.
 #' @param respLev Numeric, A number representing threshold for point of departure,
 #' strictly speaking this should be set to 0 for point of departures.
-#' @param groups string, column name of grouping variable which entries uniquely identify
+#' @param Groups string, column name of grouping variable which entries uniquely identify
 #' the replicate set of concentration response curves for a certain condition.
 #' @param minD integer, minimum number of unique concentrations
 #' per concentration response curve, curves with less are removed
@@ -207,24 +262,46 @@ test <- summarise_data(summary_data, method = "auc" )
 #' @examples
 
 #' model_pod(xcol = "GFP_int", ycol = "dose_uM", dataset = test_data,
-#'       respL = 0.1,  groups = "treatment", minD = 7, span = 3/4, degree = 1)
+#'       respL = 0.1,  Groups = "treatment", minD = 7, span = 3/4, degree = 1)
 #'
 #' @export
 
 
-model_pod <- function(xcol, ycol, dataset, respLev, groups, minD, ...) {
+model_pod <- function(dataset, ...) {
+  UseMethod("model_pod")
+}
+
+
+model_pod.pod <- function(dataset = summarized_data, xcol = "dose_uM", ycol = "GFP_int", respLev = 0, minD = 7, ...) {
+
+  all_vars_set <- attributes(dataset)$all_vars_set
+  sum_vars <- attributes(dataset)$sum_vars
+  Groups <- attributes(dataset)$Groups
+  xcol <- rlang::quo_text(rlang::enquo(xcol))
+  ycol <- rlang::quo_text(rlang::enquo(ycol))
+
+  # calc number of replicates
+
+  dataset <- dataset %>%
+    dplyr::group_by(!! rlang::sym(Groups), !! rlang::sym(xcol)) %>%
+    dplyr::mutate(n = n())
+
+
+dataset_list <- split(dataset, f = dataset[ , Groups])
+rmind <- which(lapply(dataset_list, nrow) < (minD + 1))
+if(!length(rmind) == 0) {
+dataset_list <- dataset_list[-rmind]
+}
 
 
 fm1_fun <- function(input, ...) {
-  #input = dataset_list[[1]]
-  fm1 <- loess(formula = get(ycol) ~ get(xcol), data = input, ...)
 
+  fm1 <- stats::loess(formula = get(ycol) ~ get(xcol), data = input)
 
   conc.vec <- seq(min(input[, xcol]), max(input[, xcol]), length.out = 100)
 
   new_data <- data.frame( conc.vec )
   colnames(new_data) <- xcol
-  predict(fm1, newdata = new_data, se = TRUE)
 
   prediction <- as.data.frame(
     predict(fm1, newdata =  new_data, se = TRUE )
@@ -232,36 +309,50 @@ fm1_fun <- function(input, ...) {
 
 
 
+
   list(model = fm1, conc.vec = conc.vec,
-       prediction = prediction[, "fit"],
-       se = prediction[, "se.fit"],
-       n = input$n)
+        prediction = prediction[, "fit"],
+        se = prediction[, "se.fit"],
+        n = input$n)
+
+  }
+
+model_out <- lapply(dataset_list, fm1_fun )
+
+class(model_out) <- append(class(model_out), "podmodel")
+
+return(model_out)
+
+
+} # ... eg span, degree
+
+
+model_data <- model_pod(summarized_data, dose_uM, GFP_int, respLev = 0, minD = 7, degree = 1, span = 3/4)
+
+
+calc_pod <- function(dataset, ...) {
+  UseMethod("calc_pod")
 }
 
-model_out <- lapply(dataset_list, fm1_fun, ... )
-
-
-
-
-
-calc_pod <- function() {
+calc_pod.podmodel <- function(model_data) {
   PoD_est = alist()
   TH_est = alist()
-  for( i in seq_along(dataset_list)){
 
-    ctrl_level <- model_out[[i]]$prediction[1]  # first predicted concentration level
-    sd_regr <- model_out[[i]]$se * sqrt(model_out[[i]]$n[1]) # vector of regression standard errors * sqrt(n)
+  for( i in seq_along(model_data)){
+
+    ctrl_level <- model_data[[i]]$prediction[1]  # first predicted concentration level
+    sd_regr <- model_data[[i]]$se * sqrt(model_data[[i]]$n[1]) # vector of regression standard errors * sqrt(n)
     TH_level = sd_regr + respLev + ctrl_level
 
-    ind_predict <- model_out[[i]]$prediction > TH_level
+    ind_predict <- model_data[[i]]$prediction > TH_level
     if(sum(ind_predict) > 0){
       ind_predict <- min(which(ind_predict))
     } else{
       ind_predict <- NA
     }
     if(!is.na(ind_predict)){
-      PoD_est[[i]] <- model_out[[i]]$conc.vec[ind_predict]
-      TH_est[[i]] <- model_out[[i]]$prediction[ind_predict]
+      PoD_est[[i]] <- model_data[[i]]$conc.vec[ind_predict]
+      TH_est[[i]] <- model_data[[i]]$prediction[ind_predict]
     } else{
       PoD_est[[i]] <- NA
       TH_est[[i]] <- NA
@@ -269,15 +360,28 @@ calc_pod <- function() {
 
   }
 
-  return(list(PoD_est = PoD_est, TH_est = TH_est))
+
+
+  result <- data.frame( Groups = unlist(names(model_data)),
+                        PoD_est = unlist(PoD_est),
+                        TH_est = unlist(TH_est)
+
+
+  )
+
+
+  class(result) <- append(class(result), "podest")
+  return(result)
 }
 
 
-est <- calc_pod()
-TH_est <- est[["TH_est"]]
-PoD_est <- est[["PoD_est"]]
 
-write_plot <- function(dataset_list, model_out, PoD_est){
+pod_result <- calc_pod(model_data)
+
+
+
+## todo next: write_plot
+write_plot <- function(){
 
   if(!dir.exists("../results")){
     dir.create("../results")
@@ -285,7 +389,7 @@ write_plot <- function(dataset_list, model_out, PoD_est){
   pdf("../results/pod_fits_loess.pdf", height = 15, width = 10)
   par(mfrow = c(5,4))
   for(i in seq_along(dataset_list)){
-    plot(log(dataset_list[[i]][, xcol]+1),dataset_list[[i]][, ycol], main = unique(dataset_list[[i]][, groups]
+    plot(log(dataset_list[[i]][, xcol]+1),dataset_list[[i]][, ycol], main = unique(dataset_list[[i]][, Groups]
     ),
     xlab = paste("log(", xcol, "+1)"), ylab = ycol)
     lines(log(model_out[[i]]$conc.vec+1), model_out[[i]]$prediction)
@@ -300,20 +404,11 @@ write_plot(dataset_list, model_out, PoD_est)
 
 
 
-result <- data.frame( treatment = unique(unlist(lapply(dataset_list, "[[", groups))),
-                      PoD_est = unlist(PoD_est),
-                      TH_est = unlist(TH_est)
-)
-
-#' @return dataframe with the point of departure estimates
-result
-
-}
 #
 # head(test_data)
 #
 # model_pod(xcol = "dose_uM", ycol = "GFP_int",
-#           dataset = test_data, respLev = 0, groups = "treatment",
+#           dataset = test_data, respLev = 0, Groups = "treatment",
 #           minD = 7, span = 3/4, degree = 1)
 
 
